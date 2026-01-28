@@ -35,14 +35,23 @@ serve(async (req) => {
 
     console.log('Fetching from:', freediumUrl);
 
-    // Fetch the article
+    // Fetch the article with longer timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(freediumUrl, {
+      signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
       },
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error('Fetch failed:', response.status, response.statusText);
@@ -53,93 +62,161 @@ serve(async (req) => {
     }
 
     const html = await response.text();
+    console.log('Received HTML length:', html.length);
 
     // Extract and sanitize the main content
     const sanitizedContent = sanitizeHtml(html);
+
+    // Calculate reading time (average 200 words per minute)
+    const wordCount = sanitizedContent.plainText.split(/\s+/).filter(w => w.length > 0).length;
+    const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
     return new Response(
       JSON.stringify({ 
         content: sanitizedContent.content,
         title: sanitizedContent.title,
         author: sanitizedContent.author,
+        wordCount,
+        readingTime,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error:', error);
+    const isAbortError = error instanceof Error && error.name === 'AbortError';
+    const errorMessage = isAbortError 
+      ? 'Request timed out. Please try again.'
+      : 'An error occurred while fetching the article';
     return new Response(
-      JSON.stringify({ error: 'An error occurred while fetching the article' }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 
-function sanitizeHtml(html: string): { content: string; title: string; author: string } {
-  // Extract title
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  let title = titleMatch ? titleMatch[1].replace(/ \| by .+$/, '').replace(/ - Freedium$/, '').trim() : 'Untitled Article';
-
-  // Try to extract author
-  const authorMatch = html.match(/by\s+([^<|]+)/i) || html.match(/<meta[^>]*name="author"[^>]*content="([^"]+)"/i);
-  const author = authorMatch ? authorMatch[1].trim() : '';
-
-  // Try to extract main article content
-  let content = '';
+function sanitizeHtml(html: string): { content: string; title: string; author: string; plainText: string } {
+  // Extract title - try multiple patterns
+  let title = 'Untitled Article';
+  const titlePatterns = [
+    /<h1[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/h1>/i,
+    /<h1[^>]*>([^<]+)<\/h1>/i,
+    /<title[^>]*>([^<]+)<\/title>/i,
+    /<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i,
+  ];
   
-  // Look for article or main content containers
-  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-  const contentMatch = html.match(/<div[^>]*class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-  
-  if (articleMatch) {
-    content = articleMatch[1];
-  } else if (mainMatch) {
-    content = mainMatch[1];
-  } else if (contentMatch) {
-    content = contentMatch[1];
-  } else {
-    // Fallback: extract body content
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    content = bodyMatch ? bodyMatch[1] : html;
+  for (const pattern of titlePatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      title = match[1]
+        .replace(/ \| by .+$/, '')
+        .replace(/ - Freedium$/, '')
+        .replace(/ \| Medium$/, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .trim();
+      break;
+    }
   }
 
-  // Remove script tags
-  content = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  // Extract author - try multiple patterns
+  let author = '';
+  const authorPatterns = [
+    /<a[^>]*class="[^"]*author[^"]*"[^>]*>([^<]+)<\/a>/i,
+    /<meta[^>]*name="author"[^>]*content="([^"]+)"/i,
+    /<span[^>]*class="[^"]*author[^"]*"[^>]*>([^<]+)<\/span>/i,
+    /by\s+<a[^>]*>([^<]+)<\/a>/i,
+  ];
   
-  // Remove style tags
-  content = content.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  for (const pattern of authorPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      author = match[1].trim();
+      break;
+    }
+  }
+
+  // Extract main article content - try multiple selectors
+  let content = '';
   
-  // Remove event handlers
+  // Look for freedium-specific content containers first
+  const contentPatterns = [
+    /<article[^>]*>([\s\S]*?)<\/article>/gi,
+    /<div[^>]*class="[^"]*(?:post-content|article-content|story-content|main-content)[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+    /<section[^>]*class="[^"]*(?:post|article|story|content)[^"]*"[^>]*>([\s\S]*?)<\/section>/gi,
+    /<main[^>]*>([\s\S]*?)<\/main>/gi,
+  ];
+
+  for (const pattern of contentPatterns) {
+    const matches = html.matchAll(pattern);
+    for (const match of matches) {
+      if (match[1] && match[1].length > content.length) {
+        content = match[1];
+      }
+    }
+    if (content.length > 500) break;
+  }
+
+  // If still no good content, try to extract body and be more aggressive
+  if (content.length < 500) {
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch) {
+      content = bodyMatch[1];
+    } else {
+      content = html;
+    }
+  }
+
+  // Remove unwanted elements
+  const removePatterns = [
+    /<script[^>]*>[\s\S]*?<\/script>/gi,
+    /<style[^>]*>[\s\S]*?<\/style>/gi,
+    /<noscript[^>]*>[\s\S]*?<\/noscript>/gi,
+    /<iframe[^>]*>[\s\S]*?<\/iframe>/gi,
+    /<form[^>]*>[\s\S]*?<\/form>/gi,
+    /<input[^>]*>/gi,
+    /<button[^>]*>[\s\S]*?<\/button>/gi,
+    /<nav[^>]*>[\s\S]*?<\/nav>/gi,
+    /<footer[^>]*>[\s\S]*?<\/footer>/gi,
+    /<header[^>]*>[\s\S]*?<\/header>/gi,
+    /<aside[^>]*>[\s\S]*?<\/aside>/gi,
+    /<!--[\s\S]*?-->/g,
+    /<svg[^>]*>[\s\S]*?<\/svg>/gi,
+    /<link[^>]*>/gi,
+    /<meta[^>]*>/gi,
+  ];
+
+  for (const pattern of removePatterns) {
+    content = content.replace(pattern, '');
+  }
+
+  // Remove event handlers and javascript URLs
   content = content.replace(/\s*on\w+="[^"]*"/gi, '');
   content = content.replace(/\s*on\w+='[^']*'/gi, '');
-  
-  // Remove javascript: URLs
   content = content.replace(/href="javascript:[^"]*"/gi, 'href="#"');
-  
-  // Remove iframes
-  content = content.replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '');
-  
-  // Remove forms
-  content = content.replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '');
-  
-  // Remove input elements
-  content = content.replace(/<input[^>]*>/gi, '');
-  
-  // Remove navigation elements that might contain ads or tracking
-  content = content.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '');
-  
-  // Remove footer elements
-  content = content.replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '');
-  
-  // Remove header elements (but keep h1-h6)
-  content = content.replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '');
+  content = content.replace(/href='javascript:[^']*'/gi, "href='#'");
 
-  // Remove comments
-  content = content.replace(/<!--[\s\S]*?-->/g, '');
+  // Remove data attributes that might contain tracking
+  content = content.replace(/\s*data-[\w-]+="[^"]*"/gi, '');
 
-  // Clean up excessive whitespace
-  content = content.replace(/\s+/g, ' ').trim();
+  // Clean up excessive whitespace but preserve structure
+  content = content.replace(/\n\s*\n\s*\n/g, '\n\n');
+  content = content.trim();
 
-  return { content, title, author };
+  // Extract plain text for word count
+  const plainText = content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { content, title, author, plainText };
 }

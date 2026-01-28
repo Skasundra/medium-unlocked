@@ -12,6 +12,8 @@ interface Article {
   title: string;
   author: string;
   content: string;
+  wordCount?: number;
+  readingTime?: number;
 }
 
 const Index = () => {
@@ -106,6 +108,8 @@ const Index = () => {
             title={article.title}
             author={article.author}
             content={article.content}
+            wordCount={article.wordCount}
+            readingTime={article.readingTime}
             onBack={handleBack}
           />
         )}
