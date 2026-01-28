@@ -1,8 +1,9 @@
+import { forwardRef } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export function LoadingSkeleton() {
+const LoadingSkeleton = forwardRef<HTMLDivElement>((_, ref) => {
   return (
-    <div className="w-full max-w-3xl mx-auto animate-pulse">
+    <div ref={ref} className="w-full max-w-3xl mx-auto animate-pulse">
       {/* Title skeleton */}
       <Skeleton className="h-10 w-3/4 mb-4" />
       <Skeleton className="h-6 w-1/2 mb-8" />
@@ -33,4 +34,8 @@ export function LoadingSkeleton() {
       </div>
     </div>
   );
-}
+});
+
+LoadingSkeleton.displayName = 'LoadingSkeleton';
+
+export { LoadingSkeleton };
