@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +14,6 @@ interface ExtractionResult {
   readingTime: number;
   completenessScore: number;
   method: string;
-  metadata: Record<string, unknown>;
 }
 
 interface ExtractionAttempt {
@@ -28,9 +26,6 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-
-  const startTime = Date.now();
-  let supabase;
 
   try {
     const { url } = await req.json();
@@ -50,35 +45,11 @@ serve(async (req) => {
       );
     }
 
-    supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    // Check cache first
-    const cached = await checkCache(supabase, url);
-    if (cached) {
-      console.log('Cache hit for URL:', url);
-      await logExtraction(supabase, url, 1, 'cache', 'success', null, Date.now() - startTime, cached.content.length, cached.completenessScore);
-      return new Response(
-        JSON.stringify({
-          content: cached.content,
-          title: cached.title,
-          author: cached.author,
-          wordCount: cached.wordCount,
-          readingTime: cached.readingTime,
-          cached: true,
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Define extraction strategies with retry logic
     const strategies: ExtractionAttempt[] = [
       { method: 'freedium-primary', url: `https://freedium-mirror.cfd/${url}`, timeout: 25000 },
       { method: 'freedium-alternative', url: `https://freedium.cfd/${url}`, timeout: 25000 },
       { method: 'direct-fetch', url: url, timeout: 20000 },
-      { method: 'archive-is', url: `https://archive.is/newest/${url}`, timeout: 30000 },
     ];
 
     let lastError: Error | null = null;
@@ -93,16 +64,10 @@ serve(async (req) => {
         try {
           console.log(`Attempt ${attempt}/${maxRetries} with ${strategy.method}`);
 
-          result = await extractWithStrategy(strategy, url);
+          result = await extractWithStrategy(strategy);
 
           if (result && result.completenessScore >= 60) {
             console.log(`Success with ${strategy.method}, score: ${result.completenessScore}`);
-
-            const responseTime = Date.now() - startTime;
-            await logExtraction(supabase, url, attempt, strategy.method, 'success', null, responseTime, result.content.length, result.completenessScore);
-
-            await cacheArticle(supabase, url, result);
-            await updateReliability(supabase, url, strategy.method, responseTime, true);
 
             return new Response(
               JSON.stringify({
@@ -111,13 +76,11 @@ serve(async (req) => {
                 author: result.author,
                 wordCount: result.wordCount,
                 readingTime: result.readingTime,
-                cached: false,
               }),
               { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           } else if (result) {
             console.log(`Partial content with ${strategy.method}, score: ${result.completenessScore}`);
-            await logExtraction(supabase, url, attempt, strategy.method, 'partial', 'Low completeness score', Date.now() - startTime, result.content.length, result.completenessScore);
           }
 
           if (attempt < maxRetries) {
@@ -125,11 +88,9 @@ serve(async (req) => {
             await new Promise(resolve => setTimeout(resolve, backoffMs));
           }
 
-        } catch (error) {
-          lastError = error as Error;
-          console.error(`Failed with ${strategy.method}, attempt ${attempt}:`, error);
-          await logExtraction(supabase, url, attempt, strategy.method, 'failed', error.message, Date.now() - startTime, 0, 0);
-          await updateReliability(supabase, url, strategy.method, Date.now() - startTime, false);
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          console.error(`Failed with ${strategy.method}, attempt ${attempt}:`, lastError.message);
 
           if (attempt < maxRetries) {
             const backoffMs = 1000 * Math.pow(2, attempt - 1);
@@ -149,7 +110,6 @@ serve(async (req) => {
           wordCount: result.wordCount,
           readingTime: result.readingTime,
           warning: 'Article may be incomplete. Content extraction was partially successful.',
-          cached: false,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -167,7 +127,7 @@ serve(async (req) => {
   }
 });
 
-async function extractWithStrategy(strategy: ExtractionAttempt, originalUrl: string): Promise<ExtractionResult> {
+async function extractWithStrategy(strategy: ExtractionAttempt): Promise<ExtractionResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), strategy.timeout);
 
@@ -192,7 +152,7 @@ async function extractWithStrategy(strategy: ExtractionAttempt, originalUrl: str
       throw new Error('Response too short, likely empty or error page');
     }
 
-    const extracted = extractContent(html, strategy.method);
+    const extracted = extractContent(html);
     const completenessScore = calculateCompletenessScore(extracted, html);
 
     const wordCount = extracted.plainText.split(/\s+/).filter(w => w.length > 0).length;
@@ -204,11 +164,6 @@ async function extractWithStrategy(strategy: ExtractionAttempt, originalUrl: str
       readingTime,
       completenessScore,
       method: strategy.method,
-      metadata: {
-        originalUrl,
-        fetchedUrl: strategy.url,
-        htmlLength: html.length,
-      },
     };
 
   } finally {
@@ -217,7 +172,7 @@ async function extractWithStrategy(strategy: ExtractionAttempt, originalUrl: str
 }
 
 function getBrowserHeaders(method: string): Record<string, string> {
-  const baseHeaders = {
+  const baseHeaders: Record<string, string> = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -237,7 +192,7 @@ function getBrowserHeaders(method: string): Record<string, string> {
   return baseHeaders;
 }
 
-function extractContent(html: string, method: string): {
+function extractContent(html: string): {
   content: string;
   title: string;
   author: string;
@@ -406,136 +361,4 @@ function calculateCompletenessScore(extracted: { content: string; title: string;
   if (hasReadTime) score += 5;
 
   return Math.min(100, score);
-}
-
-async function checkCache(supabase: any, url: string): Promise<any> {
-  try {
-    const { data, error } = await supabase
-      .from('article_cache')
-      .select('*')
-      .eq('url', url)
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle();
-
-    if (error) {
-      console.error('Cache check error:', error);
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Cache check failed:', error);
-    return null;
-  }
-}
-
-async function cacheArticle(supabase: any, url: string, result: ExtractionResult): Promise<void> {
-  try {
-    await supabase
-      .from('article_cache')
-      .upsert({
-        url,
-        title: result.title,
-        author: result.author,
-        content: result.content,
-        plain_text: result.plainText,
-        word_count: result.wordCount,
-        reading_time: result.readingTime,
-        extraction_method: result.method,
-        completeness_score: result.completenessScore,
-        metadata: result.metadata,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-  } catch (error) {
-    console.error('Failed to cache article:', error);
-  }
-}
-
-async function logExtraction(
-  supabase: any,
-  url: string,
-  attempt: number,
-  method: string,
-  status: string,
-  errorMessage: string | null,
-  responseTimeMs: number,
-  contentLength: number,
-  completenessScore: number
-): Promise<void> {
-  try {
-    await supabase
-      .from('extraction_logs')
-      .insert({
-        url,
-        attempt_number: attempt,
-        method,
-        status,
-        error_message: errorMessage,
-        response_time_ms: responseTimeMs,
-        content_length: contentLength,
-        completeness_indicators: { completeness_score: completenessScore },
-      });
-  } catch (error) {
-    console.error('Failed to log extraction:', error);
-  }
-}
-
-async function updateReliability(
-  supabase: any,
-  url: string,
-  method: string,
-  responseTimeMs: number,
-  success: boolean
-): Promise<void> {
-  try {
-    const pattern = extractUrlPattern(url);
-
-    const { data: existing } = await supabase
-      .from('url_reliability')
-      .select('*')
-      .eq('url_pattern', pattern)
-      .maybeSingle();
-
-    if (existing) {
-      const totalAttempts = existing.total_attempts + 1;
-      const successfulAttempts = existing.successful_attempts + (success ? 1 : 0);
-      const avgResponseTime = Math.floor(
-        (existing.average_response_time_ms * existing.total_attempts + responseTimeMs) / totalAttempts
-      );
-
-      await supabase
-        .from('url_reliability')
-        .update({
-          total_attempts: totalAttempts,
-          successful_attempts: successfulAttempts,
-          best_method: success ? method : existing.best_method,
-          average_response_time_ms: avgResponseTime,
-          last_success_at: success ? new Date().toISOString() : existing.last_success_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('url_pattern', pattern);
-    } else {
-      await supabase
-        .from('url_reliability')
-        .insert({
-          url_pattern: pattern,
-          total_attempts: 1,
-          successful_attempts: success ? 1 : 0,
-          best_method: success ? method : null,
-          average_response_time_ms: responseTimeMs,
-          last_success_at: success ? new Date().toISOString() : null,
-        });
-    }
-  } catch (error) {
-    console.error('Failed to update reliability:', error);
-  }
-}
-
-function extractUrlPattern(url: string): string {
-  try {
-    const match = url.match(/https?:\/\/([^/]+)/);
-    return match ? match[1] : url;
-  } catch {
-    return url;
-  }
 }
