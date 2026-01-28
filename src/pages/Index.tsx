@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ArticleInput } from '@/components/ArticleInput';
 import { ArticleContent } from '@/components/ArticleContent';
 import { ArticleHistory } from '@/components/ArticleHistory';
 import { LoadingSkeleton } from '@/components/LoadingSkeleton';
 import { useArticleHistory } from '@/hooks/useArticleHistory';
 import { supabase } from '@/integrations/supabase/client';
-import { BookOpen, AlertCircle } from 'lucide-react';
+import { BookOpen, AlertCircle, BarChart3 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 interface Article {
   title: string;
@@ -64,7 +66,13 @@ const Index = () => {
         {!article && !isLoading && (
           <>
             {/* Header */}
-            <div className="text-center mb-10">
+            <div className="text-center mb-10 relative">
+              <Link to="/analytics" className="absolute top-0 right-0">
+                <Button variant="outline" size="sm">
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Analytics
+                </Button>
+              </Link>
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-6">
                 <BookOpen className="h-8 w-8 text-primary" />
               </div>
