@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArticleInput } from '@/components/ArticleInput';
 import { ArticleContent } from '@/components/ArticleContent';
@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { BookOpen, AlertCircle, BarChart3 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import type { TextSize } from '@/components/TextSizeControl';
 
 interface Article {
   title: string;
@@ -22,7 +23,15 @@ const Index = () => {
   const [article, setArticle] = useState<Article | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [textSize, setTextSize] = useState<TextSize>(() => {
+    const saved = localStorage.getItem('textSize');
+    return (saved as TextSize) || 'base';
+  });
   const { history, addToHistory, clearHistory, removeFromHistory } = useArticleHistory();
+
+  useEffect(() => {
+    localStorage.setItem('textSize', textSize);
+  }, [textSize]);
 
   const fetchArticle = async (url: string) => {
     setIsLoading(true);
@@ -118,6 +127,8 @@ const Index = () => {
             content={article.content}
             wordCount={article.wordCount}
             readingTime={article.readingTime}
+            textSize={textSize}
+            onTextSizeChange={setTextSize}
             onBack={handleBack}
           />
         )}
