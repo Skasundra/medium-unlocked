@@ -5,7 +5,7 @@ import { ArticleContent } from '@/components/ArticleContent';
 import { ArticleHistory } from '@/components/ArticleHistory';
 import { LoadingSkeleton } from '@/components/LoadingSkeleton';
 import { useArticleHistory } from '@/hooks/useArticleHistory';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { BookOpen, AlertCircle, BarChart3 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
