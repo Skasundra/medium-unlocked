@@ -117,8 +117,9 @@
   @apply max-w-full h-auto rounded-lg my-6;
 }
 
+/* Remove hardcoded text size - let prose classes control it */
 .article-content p {
-  @apply text-lg leading-relaxed mb-6;
+  @apply leading-relaxed mb-6;
   font-family: 'Merriweather', Georgia, serif;
 }
 
@@ -138,6 +139,7 @@
   @apply my-6 ml-6;
 }
 
+/* Remove hardcoded text size - let prose classes control it */
 .article-content li {
   @apply mb-2;
   font-family: 'Merriweather', Georgia, serif;
@@ -162,6 +164,92 @@
 
 .article-content figcaption {
   @apply text-center text-sm text-muted-foreground mt-2;
+}
+
+/* Dynamic text size control */
+.article-content-body[data-text-size="xs"] p,
+.article-content-body[data-text-size="xs"] li {
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+}
+
+.article-content-body[data-text-size="sm"] p,
+.article-content-body[data-text-size="sm"] li {
+  font-size: 1rem !important;
+  line-height: 1.6 !important;
+}
+
+.article-content-body[data-text-size="base"] p,
+.article-content-body[data-text-size="base"] li {
+  font-size: 1.125rem !important;
+  line-height: 1.6 !important;
+}
+
+.article-content-body[data-text-size="lg"] p,
+.article-content-body[data-text-size="lg"] li {
+  font-size: 1.25rem !important;
+  line-height: 1.7 !important;
+}
+
+.article-content-body[data-text-size="xl"] p,
+.article-content-body[data-text-size="xl"] li {
+  font-size: 1.5rem !important;
+  line-height: 1.7 !important;
+}
+
+.article-content-body[data-text-size="2xl"] p,
+.article-content-body[data-text-size="2xl"] li {
+  font-size: 1.875rem !important;
+  line-height: 1.8 !important;
+}
+
+/* Also apply to headings with proportional scaling */
+.article-content-body[data-text-size="xs"] h2 {
+  font-size: 1.5rem !important;
+}
+
+.article-content-body[data-text-size="sm"] h2 {
+  font-size: 1.75rem !important;
+}
+
+.article-content-body[data-text-size="base"] h2 {
+  font-size: 2rem !important;
+}
+
+.article-content-body[data-text-size="lg"] h2 {
+  font-size: 2.25rem !important;
+}
+
+.article-content-body[data-text-size="xl"] h2 {
+  font-size: 2.5rem !important;
+}
+
+.article-content-body[data-text-size="2xl"] h2 {
+  font-size: 3rem !important;
+}
+
+.article-content-body[data-text-size="xs"] h3 {
+  font-size: 1.25rem !important;
+}
+
+.article-content-body[data-text-size="sm"] h3 {
+  font-size: 1.375rem !important;
+}
+
+.article-content-body[data-text-size="base"] h3 {
+  font-size: 1.5rem !important;
+}
+
+.article-content-body[data-text-size="lg"] h3 {
+  font-size: 1.75rem !important;
+}
+
+.article-content-body[data-text-size="xl"] h3 {
+  font-size: 2rem !important;
+}
+
+.article-content-body[data-text-size="2xl"] h3 {
+  font-size: 2.25rem !important;
 }
 /* Utility classes */
 @layer utilities {

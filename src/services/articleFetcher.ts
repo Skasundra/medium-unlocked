@@ -33,42 +33,42 @@ export class ArticleFetcher {
       throw new Error('Please provide a valid Medium article URL');
     }
 
-    // Define extraction strategies
+    // Define extraction strategies with longer timeouts for better content loading
     const strategies: ExtractionStrategy[] = [
       { 
         method: 'freedium-primary', 
         url: `https://freedium-mirror.cfd/${url}`, 
-        timeout: 30000 
+        timeout: 45000  // Increased from 30000
       },
       { 
         method: 'freedium-alternative', 
         url: `https://freedium.cfd/${url}`, 
-        timeout: 30000 
+        timeout: 45000  // Increased from 30000
       },
       { 
         method: 'scribe-rip', 
         url: `https://scribe.rip/${url.replace(/https?:\/\/(www\.)?medium\.com\//, '')}`, 
-        timeout: 30000 
+        timeout: 40000  // Increased from 30000
       },
       { 
         method: 'direct-cors-proxy', 
         url: `${this.CORS_PROXY}${encodeURIComponent(url)}`, 
-        timeout: 25000 
+        timeout: 35000  // Increased from 25000
       },
       { 
         method: 'direct-cors-alt', 
         url: `${this.CORS_PROXY_ALT}${encodeURIComponent(url)}`, 
-        timeout: 25000 
+        timeout: 35000  // Increased from 25000
       },
     ];
 
     let bestResult: ExtractionResult | null = null;
     let lastError: Error | null = null;
 
-    // Try each strategy
+    // Try each strategy with improved retry logic
     for (let strategyIndex = 0; strategyIndex < strategies.length; strategyIndex++) {
       const strategy = strategies[strategyIndex];
-      const maxRetries = strategyIndex < 2 ? 2 : 1;
+      const maxRetries = strategyIndex < 2 ? 3 : 2; // More retries for freedium services
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -92,16 +92,24 @@ export class ArticleFetcher {
             }
           }
 
+          // For freedium services, wait longer between retries
           if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1500 * Math.pow(2, attempt - 1)));
+            const waitTime = strategy.method.includes('freedium') 
+              ? 3000 * Math.pow(2, attempt - 1)  // 3s, 6s for freedium
+              : 1500 * Math.pow(2, attempt - 1); // 1.5s, 3s for others
+            await new Promise(resolve => setTimeout(resolve, waitTime));
           }
 
         } catch (err) {
           lastError = err instanceof Error ? err : new Error(String(err));
           console.error(`Failed with ${strategy.method}, attempt ${attempt}:`, lastError.message);
           
+          // Wait before retry, longer for freedium services
           if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1500 * Math.pow(2, attempt - 1)));
+            const waitTime = strategy.method.includes('freedium') 
+              ? 3000 * Math.pow(2, attempt - 1)
+              : 1500 * Math.pow(2, attempt - 1);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         }
       }
@@ -130,17 +138,19 @@ export class ArticleFetcher {
     try {
       const headers = this.getBrowserHeaders(strategy.method);
 
-      const response = await fetch(strategy.url, {
+      // Add progressive timeout with multiple attempts for better content loading
+      const response = await this.fetchWithProgressiveTimeout(strategy.url, {
         signal: controller.signal,
         headers,
         mode: 'cors',
-      });
+      }, strategy.timeout);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const html = await response.text();
+      // Wait for complete response with content validation
+      const html = await this.waitForCompleteResponse(response, strategy.method);
 
       if (html.length < 500) {
         throw new Error('Response too short, likely empty or error page');
@@ -151,7 +161,8 @@ export class ArticleFetcher {
         throw new Error('Insufficient text content in response');
       }
 
-      const extracted = this.extractContent(html);
+      // Extract content with multiple validation passes
+      const extracted = await this.extractContentWithValidation(html, strategy.method);
       const completenessScore = this.calculateCompletenessScore(extracted, html);
 
       const wordCount = extracted.plainText.split(/\s+/).filter(w => w.length > 0).length;
@@ -184,6 +195,240 @@ export class ArticleFetcher {
     }
 
     return baseHeaders;
+  }
+
+  private static async fetchWithProgressiveTimeout(
+    url: string, 
+    options: RequestInit, 
+    maxTimeout: number
+  ): Promise<Response> {
+    // Try with shorter timeout first, then extend if needed
+    const timeouts = [Math.min(15000, maxTimeout * 0.5), maxTimeout];
+    
+    for (let i = 0; i < timeouts.length; i++) {
+      const timeout = timeouts[i];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        
+        // If it's the last attempt or not a timeout error, throw
+        if (i === timeouts.length - 1 || !error.name?.includes('Abort')) {
+          throw error;
+        }
+        
+        // Wait a bit before retrying with longer timeout
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`Retrying with longer timeout: ${timeouts[i + 1]}ms`);
+      }
+    }
+    
+    throw new Error('All timeout attempts failed');
+  }
+
+  private static async waitForCompleteResponse(response: Response, method: string): Promise<string> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return await response.text();
+    }
+
+    let html = '';
+    let chunks: Uint8Array[] = [];
+    let lastChunkTime = Date.now();
+    const decoder = new TextDecoder();
+    
+    // For freedium services, wait longer for complete content
+    const isFreedium = method.includes('freedium');
+    const maxWaitTime = isFreedium ? 45000 : 30000; // Extended wait for freedium
+    const chunkTimeout = isFreedium ? 8000 : 5000; // Wait longer between chunks
+    
+    try {
+      while (true) {
+        const timeoutPromise = new Promise<{ done: true; value?: undefined }>((_, reject) => {
+          setTimeout(() => reject(new Error('Chunk timeout')), chunkTimeout);
+        });
+        
+        const readPromise = reader.read();
+        
+        let result;
+        try {
+          result = await Promise.race([readPromise, timeoutPromise]);
+        } catch (error) {
+          // If we have some content and it's been a while, check if it's complete enough
+          if (chunks.length > 0 && Date.now() - lastChunkTime > chunkTimeout) {
+            html = decoder.decode(new Uint8Array(chunks.reduce((acc, chunk) => [...acc, ...chunk], [])));
+            
+            // Check if we have enough content to proceed
+            if (this.isContentSufficientlyComplete(html, method)) {
+              console.log(`Content appears complete after ${Date.now() - lastChunkTime}ms wait`);
+              break;
+            }
+          }
+          throw error;
+        }
+        
+        if (result.done) {
+          break;
+        }
+        
+        if (result.value) {
+          chunks.push(result.value);
+          lastChunkTime = Date.now();
+          
+          // Periodically check if we have enough content
+          if (chunks.length % 10 === 0) {
+            html = decoder.decode(new Uint8Array(chunks.reduce((acc, chunk) => [...acc, ...chunk], [])));
+            if (this.isContentSufficientlyComplete(html, method)) {
+              console.log(`Content appears complete after ${chunks.length} chunks`);
+              break;
+            }
+          }
+        }
+        
+        // Safety check for maximum wait time
+        if (Date.now() - lastChunkTime > maxWaitTime) {
+          console.log(`Max wait time reached, proceeding with available content`);
+          break;
+        }
+      }
+      
+      if (!html) {
+        html = decoder.decode(new Uint8Array(chunks.reduce((acc, chunk) => [...acc, ...chunk], [])));
+      }
+      
+    } finally {
+      reader.releaseLock();
+    }
+    
+    return html;
+  }
+
+  private static isContentSufficientlyComplete(html: string, method: string): boolean {
+    // Quick completeness check during streaming
+    const textContent = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const wordCount = textContent.split(/\s+/).filter(w => w.length > 0).length;
+    
+    // For freedium, expect more content
+    const minWords = method.includes('freedium') ? 800 : 500;
+    
+    if (wordCount < minWords) {
+      return false;
+    }
+    
+    // Check for article structure indicators
+    const hasTitle = /<h1[^>]*>/i.test(html);
+    const hasParagraphs = (html.match(/<p[^>]*>/gi) || []).length > 5;
+    const hasArticleEnd = html.includes('</article>') || html.includes('</main>') || 
+                         html.includes('</body>') || html.includes('</html>');
+    
+    return hasTitle && hasParagraphs && (hasArticleEnd || wordCount > minWords * 1.5);
+  }
+
+  private static async extractContentWithValidation(html: string, method: string): Promise<{
+    content: string;
+    title: string;
+    author: string;
+    plainText: string;
+  }> {
+    // First extraction attempt
+    let extracted = this.extractContent(html);
+    
+    // If content seems incomplete, wait a bit and try alternative extraction
+    const wordCount = extracted.plainText.split(/\s+/).filter(w => w.length > 0).length;
+    const minExpectedWords = method.includes('freedium') ? 600 : 400;
+    
+    if (wordCount < minExpectedWords && method.includes('freedium')) {
+      console.log(`Content seems short (${wordCount} words), trying alternative extraction...`);
+      
+      // Wait a moment for any lazy-loaded content
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Try alternative content extraction patterns
+      const alternativeExtracted = this.extractContentAlternative(html);
+      
+      // Use the better result
+      if (alternativeExtracted.plainText.split(/\s+/).filter(w => w.length > 0).length > wordCount) {
+        extracted = alternativeExtracted;
+      }
+    }
+    
+    return extracted;
+  }
+
+  private static extractContentAlternative(html: string): {
+    content: string;
+    title: string;
+    author: string;
+    plainText: string;
+  } {
+    // Alternative extraction patterns for when primary extraction yields short content
+    const alternativeContentPatterns = [
+      // Look for any div with substantial text content
+      /<div[^>]*>(?=[\s\S]*?<p[^>]*>[\s\S]*?<p[^>]*>[\s\S]*?<p[^>]*>[\s\S]*?<p[^>]*>)([\s\S]*?)<\/div>/gi,
+      // Look for sections with multiple paragraphs
+      /<section[^>]*>(?=[\s\S]*?<p[^>]*>[\s\S]*?<p[^>]*>[\s\S]*?<p[^>]*>)([\s\S]*?)<\/section>/gi,
+      // Look for any container with lots of text
+      /<[^>]+>(?=[\s\S]{2000,})([\s\S]*?)<\/[^>]+>/gi,
+    ];
+
+    let bestContent = '';
+    let bestScore = 0;
+
+    for (const pattern of alternativeContentPatterns) {
+      const matches = html.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1]) {
+          const potentialContent = match[1];
+          const textLength = potentialContent.replace(/<[^>]+>/g, '').trim().length;
+          const paragraphCount = (potentialContent.match(/<p[^>]*>/gi) || []).length;
+          const score = textLength + (paragraphCount * 150); // Higher weight for paragraphs
+          
+          if (score > bestScore && textLength > 1000) {
+            bestContent = potentialContent;
+            bestScore = score;
+          }
+        }
+      }
+    }
+
+    if (bestContent) {
+      const sanitized = this.sanitizeContent(bestContent);
+      const plainText = sanitized
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&mdash;/g, '—')
+        .replace(/&ndash;/g, '–')
+        .replace(/&hellip;/g, '…')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Use original extraction for title and author
+      const original = this.extractContent(html);
+      
+      return {
+        content: sanitized,
+        title: original.title,
+        author: original.author,
+        plainText
+      };
+    }
+
+    // Fallback to original extraction
+    return this.extractContent(html);
   }
   private static extractContent(html: string): {
     content: string;

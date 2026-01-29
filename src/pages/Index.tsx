@@ -5,8 +5,10 @@ import { ArticleHistory } from '@/components/ArticleHistory';
 import { BookmarksList } from '@/components/BookmarksList';
 import { LoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AdsterraTestPanel } from '@/components/AdsterraTestPanel';
 import { useArticleHistory } from '@/hooks/useArticleHistory';
 import { useBookmarks } from '@/hooks/useBookmarks';
+import { useAdsterraPopunder } from '@/hooks/useAdsterraPopunder';
 import { ArticleFetcher } from '@/services/articleFetcher';
 import { BookOpen, AlertCircle, RotateCcw, Bookmark, History } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -34,6 +36,7 @@ const Index = () => {
   });
   const { history, addToHistory, clearHistory, removeFromHistory } = useArticleHistory();
   const { bookmarks, addBookmark, removeBookmark, isBookmarked, clearBookmarks } = useBookmarks();
+  const { triggerPopunder } = useAdsterraPopunder();
   const articleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,6 +65,12 @@ const Index = () => {
     }
   };
 
+  const handleArticleSelect = (url: string) => {
+    // Trigger popunder when selecting from history or bookmarks
+    triggerPopunder();
+    fetchArticle(url);
+  };
+
   const handleBookmarkToggle = () => {
     if (!article) return;
 
@@ -85,6 +94,8 @@ const Index = () => {
 
   const handleResumeLastArticle = () => {
     if (history.length > 0) {
+      // Trigger popunder when resuming last article
+      triggerPopunder();
       fetchArticle(history[0].url);
     }
   };
@@ -154,7 +165,7 @@ const Index = () => {
               <TabsContent value="history" className="mt-6">
                 <ArticleHistory
                   history={history}
-                  onSelect={fetchArticle}
+                  onSelect={handleArticleSelect}
                   onRemove={removeFromHistory}
                   onClear={clearHistory}
                 />
@@ -162,12 +173,15 @@ const Index = () => {
               <TabsContent value="bookmarks" className="mt-6">
                 <BookmarksList
                   bookmarks={bookmarks}
-                  onSelect={fetchArticle}
+                  onSelect={handleArticleSelect}
                   onRemove={removeBookmark}
                   onClear={clearBookmarks}
                 />
               </TabsContent>
             </Tabs>
+
+            {/* Test Panel - Remove in production */}
+            <AdsterraTestPanel />
           </>
         )}
 

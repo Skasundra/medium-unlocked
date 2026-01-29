@@ -1,5 +1,7 @@
-import { Clock, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { Clock, Trash2, X, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ArticleHistoryItem } from '@/hooks/useArticleHistory';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -11,9 +13,19 @@ interface ArticleHistoryProps {
 }
 
 export function ArticleHistory({ history, onSelect, onRemove, onClear }: ArticleHistoryProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+
   if (history.length === 0) {
     return null;
   }
+
+  const filteredHistory = history.filter((item) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(query) ||
+      (item.author && item.author.toLowerCase().includes(query))
+    );
+  });
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-8">
@@ -33,33 +45,49 @@ export function ArticleHistory({ history, onSelect, onRemove, onClear }: Article
         </Button>
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search history..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       <div className="space-y-2">
-        {history.map((item) => (
-          <div
-            key={item.url}
-            className="group flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors cursor-pointer"
-            onClick={() => onSelect(item.url)}
-          >
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-foreground truncate">{item.title}</p>
-              <p className="text-sm text-muted-foreground">
-                {item.author && `${item.author} • `}
-                {formatDistanceToNow(new Date(item.fetchedAt), { addSuffix: true })}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="opacity-0 group-hover:opacity-100 transition-opacity ml-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(item.url);
-              }}
+        {filteredHistory.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-8">
+            No articles found matching "{searchQuery}"
+          </p>
+        ) : (
+          filteredHistory.map((item) => (
+            <div
+              key={item.url}
+              className="group flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors cursor-pointer"
+              onClick={() => onSelect(item.url)}
             >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-foreground truncate">{item.title}</p>
+                <p className="text-sm text-muted-foreground">
+                  {item.author && `${item.author} • `}
+                  {formatDistanceToNow(new Date(item.fetchedAt), { addSuffix: true })}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(item.url);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adsterra Popunder Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Adsterra Popunder Test</h1>
+        
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Click "Load Script" to initialize the Adsterra script</li>
+                <li>Click "Trigger Popunder" to test the popunder</li>
+                <li>Check the console and logs below for any errors</li>
+            </ol>
+        </div>
+
+        <button id="loadScript">Load Adsterra Script</button>
+        <button id="triggerPopunder" disabled>Trigger Popunder</button>
+        <button id="clearLogs">Clear Logs</button>
+
+        <div class="info">
+            <strong>Script URL:</strong><br>
+            <code>https://pl28600045.effectivegatecpm.com/17/f9/1c/17f91cf43b1edbff3b7ed0bbb15d1cfd.js</code>
+        </div>
+
+        <div id="logs" class="log">
+            <div>Ready to test...</div>
+        </div>
+    </div>
+
+    <script>
+        const scriptUrl = 'https://pl28600045.effectivegatecpm.com/17/f9/1c/17f91cf43b1edbff3b7ed0bbb15d1cfd.js';
+        let scriptLoaded = false;
+        
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            logs.innerHTML += `<div>[${time}] ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(`[${time}] ${message}`);
+        }
+
+        document.getElementById('loadScript').addEventListener('click', function() {
+            if (scriptLoaded) {
+                log('Script already loaded');
+                return;
+            }
+
+            log('Loading Adsterra script...');
+            log('🛡️ If this fails, try disabling your ad blocker');
+            
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = scriptUrl;
+            script.async = true;
+            
+            script.onload = function() {
+                log('✅ Adsterra script loaded successfully');
+                scriptLoaded = true;
+                document.getElementById('triggerPopunder').disabled = false;
+                document.getElementById('loadScript').disabled = true;
+            };
+            
+            script.onerror = function() {
+                log('❌ Failed to load Adsterra script');
+                log('🔍 Possible causes:');
+                log('   • Ad blocker is blocking the script');
+                log('   • Network connectivity issues');
+                log('   • Script URL is not accessible');
+                log('   • CORS or security restrictions');
+                log('💡 Try disabling ad blocker and refresh the page');
+                log('💡 Or test the script URL directly in a new tab');
+            };
+            
+            document.head.appendChild(script);
+        });
+
+        document.getElementById('triggerPopunder').addEventListener('click', function() {
+            if (!scriptLoaded) {
+                log('❌ Script not loaded yet');
+                return;
+            }
+
+            log('Triggering popunder...');
+            
+            try {
+                // Create a new script element to trigger the popunder
+                const triggerScript = document.createElement('script');
+                triggerScript.type = 'text/javascript';
+                triggerScript.src = scriptUrl;
+                triggerScript.async = true;
+                triggerScript.setAttribute('data-trigger', Date.now().toString());
+                
+                document.body.appendChild(triggerScript);
+                
+                // Clean up after 2 seconds
+                setTimeout(() => {
+                    if (triggerScript.parentNode) {
+                        triggerScript.parentNode.removeChild(triggerScript);
+                        log('🧹 Cleaned up trigger script');
+                    }
+                }, 2000);
+                
+                log('✅ Popunder trigger script added');
+            } catch (error) {
+                log('❌ Error triggering popunder: ' + error.message);
+            }
+        });
+
+        document.getElementById('clearLogs').addEventListener('click', function() {
+            document.getElementById('logs').innerHTML = '<div>Logs cleared...</div>';
+        });
+
+        // Log any global errors
+        window.addEventListener('error', function(e) {
+            log('❌ Global error: ' + e.message);
+        });
+    </script>
+</body>
+</html>
