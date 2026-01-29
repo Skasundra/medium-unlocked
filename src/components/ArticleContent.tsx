@@ -1,7 +1,8 @@
 import { forwardRef } from 'react';
-import { ArrowLeft, Clock, User, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, User, BookOpen, Bookmark, BookmarkCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TextSizeControl, type TextSize } from './TextSizeControl';
+import { ReadingProgressBar } from './ReadingProgressBar';
 
 interface ArticleContentProps {
   title: string;
@@ -12,6 +13,9 @@ interface ArticleContentProps {
   textSize: TextSize;
   onTextSizeChange: (size: TextSize) => void;
   onBack: () => void;
+  url: string;
+  isBookmarked: boolean;
+  onBookmarkToggle: () => void;
 }
 
 const textSizeClasses: Record<TextSize, string> = {
@@ -22,21 +26,42 @@ const textSizeClasses: Record<TextSize, string> = {
 };
 
 const ArticleContent = forwardRef<HTMLDivElement, ArticleContentProps>(
-  ({ title, author, content, wordCount, readingTime, textSize, onTextSizeChange, onBack }, ref) => {
+  ({ title, author, content, wordCount, readingTime, textSize, onTextSizeChange, onBack, url, isBookmarked, onBookmarkToggle }, ref) => {
     return (
-      <div ref={ref} className="w-full max-w-3xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="ghost"
-            onClick={onBack}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to search
-          </Button>
-          
-          <TextSizeControl size={textSize} onSizeChange={onTextSizeChange} />
-        </div>
+      <>
+        <ReadingProgressBar contentRef={ref as React.RefObject<HTMLElement>} />
+        <div ref={ref} className="w-full max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <Button
+              variant="ghost"
+              onClick={onBack}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to search
+            </Button>
+            
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBookmarkToggle}
+                className={`${
+                  isBookmarked 
+                    ? 'text-primary hover:text-primary/80' 
+                    : 'text-muted-foreground hover:text-primary'
+                }`}
+                title={isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
+              >
+                {isBookmarked ? (
+                  <BookmarkCheck className="h-4 w-4" />
+                ) : (
+                  <Bookmark className="h-4 w-4" />
+                )}
+              </Button>
+              <TextSizeControl size={textSize} onSizeChange={onTextSizeChange} />
+            </div>
+          </div>
 
         <article className="article-content">
           <header className="mb-8 pb-6 border-b border-border">
@@ -84,6 +109,7 @@ const ArticleContent = forwardRef<HTMLDivElement, ArticleContentProps>(
           />
         </article>
       </div>
+    </>
     );
   }
 );

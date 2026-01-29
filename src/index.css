@@ -163,3 +163,12 @@
 .article-content figcaption {
   @apply text-center text-sm text-muted-foreground mt-2;
 }
+/* Utility classes */
+@layer utilities {
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}

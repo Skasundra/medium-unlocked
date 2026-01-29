@@ -1,73 +1,99 @@
-# Welcome to your Lovable project
+# Medium Reader
 
-## Project info
+A web-based Medium article reader that bypasses paywalls and provides a distraction-free reading experience.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- **Paywall Bypass**: Read Medium articles without subscription
+- **Multiple Extraction Methods**: Uses 5 different strategies for maximum success rate
+- **Clean Reading Experience**: Distraction-free, customizable interface
+- **Reading Progress Bar**: Visual indicator showing reading progress at the top
+- **Bookmark System**: Save favorite articles separately from reading history
+- **Text Customization**: 4 text sizes (S, M, L, XL)
+- **Theme Support**: Light, dark, and system themes
+- **Reading History**: Local storage of last 20 articles
+- **Responsive Design**: Works on all devices
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend**: React 18 + TypeScript + Vite
+- **UI**: shadcn-ui + Tailwind CSS
+- **State**: React Query + localStorage
+- **Article Fetching**: Frontend-only with CORS proxies
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Extraction Strategies
 
-Changes made via Lovable will be committed automatically to this repo.
+1. **Freedium Primary** - Primary mirror service
+2. **Freedium Alternative** - Backup mirror service  
+3. **Scribe.rip** - Alternative Medium reader
+4. **CORS Proxy** - Direct fetch with proxy
+5. **CORS Proxy Alt** - Alternative proxy service
 
-**Use your preferred IDE**
+## Getting Started
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## How It Works
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The app uses multiple extraction strategies with intelligent fallbacks:
 
-**Use GitHub Codespaces**
+1. Validates Medium URL
+2. Tries each extraction method with retries
+3. Scores content quality (0-100 points)
+4. Returns best available result
+5. Displays with customizable interface
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Content Quality Scoring
 
-## What technologies are used for this project?
+- **Title quality**: Up to 25 points
+- **Author presence**: Up to 15 points  
+- **Content length**: Up to 30 points
+- **Structure quality**: Up to 20 points
+- **Media content**: Up to 10 points
 
-This project is built with:
+Articles with 70+ points are considered high quality, 35+ points are acceptable with warnings.
+
+## New Features
+
+### Reading Progress Bar
+- **Visual Progress**: Fixed progress bar at the top shows reading completion
+- **Smooth Animation**: Real-time updates as you scroll through the article
+- **Non-intrusive**: Minimal 1px height bar that doesn't interfere with reading
+
+### Bookmark System
+- **Save Favorites**: Bookmark articles separately from reading history
+- **Organized Storage**: Up to 50 bookmarks with metadata (word count, reading time)
+- **Easy Management**: Add/remove bookmarks with one click
+- **Tabbed Interface**: Switch between Recent articles and Bookmarks
+- **Persistent Storage**: Bookmarks saved locally in browser
+
+## Project Structure
+
+```
+src/
+├── components/          # UI components
+│   ├── ArticleContent.tsx      # Article display with progress bar
+│   ├── BookmarksList.tsx       # Bookmark management
+│   ├── ReadingProgressBar.tsx  # Progress indicator
+│   └── ui/                     # shadcn-ui components
+├── hooks/              # Custom React hooks
+│   ├── useBookmarks.ts         # Bookmark management
+│   ├── useReadingProgress.ts   # Progress tracking
+│   └── useArticleHistory.ts    # History management
+├── pages/              # Page components
+├── services/           # Business logic (ArticleFetcher)
+└── lib/                # Utilities
+```
+
+## Technologies Used
 
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- React Query
+- React Router

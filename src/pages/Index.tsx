@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import { ArticleInput } from '@/components/ArticleInput';
 import { ArticleContent } from '@/components/ArticleContent';
 import { ArticleHistory } from '@/components/ArticleHistory';
+import { BookmarksList } from '@/components/BookmarksList';
 import { LoadingSkeleton } from '@/components/LoadingSkeleton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useArticleHistory } from '@/hooks/useArticleHistory';
-import { supabase } from '@/lib/supabaseClient';
-import { BookOpen, AlertCircle, BarChart3, RotateCcw } from 'lucide-react';
+import { useBookmarks } from '@/hooks/useBookmarks';
+import { ArticleFetcher } from '@/services/articleFetcher';
+import { BookOpen, AlertCircle, RotateCcw, Bookmark, History } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { TextSize } from '@/components/TextSizeControl';
 
 interface Article {
@@ -18,6 +20,8 @@ interface Article {
   content: string;
   wordCount?: number;
   readingTime?: number;
+  warning?: string;
+  url: string;
 }
 
 const Index = () => {
@@ -29,6 +33,8 @@ const Index = () => {
     return (saved as TextSize) || 'base';
   });
   const { history, addToHistory, clearHistory, removeFromHistory } = useArticleHistory();
+  const { bookmarks, addBookmark, removeBookmark, isBookmarked, clearBookmarks } = useBookmarks();
+  const articleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem('textSize', textSize);
@@ -40,19 +46,10 @@ const Index = () => {
     setArticle(null);
 
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('fetch-article', {
-        body: { url },
-      });
+      const data = await ArticleFetcher.fetchArticle(url);
 
-      if (fnError) {
-        throw new Error(fnError.message || 'Failed to fetch article');
-      }
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setArticle(data);
+      const articleData = { ...data, url };
+      setArticle(articleData);
       addToHistory({
         url,
         title: data.title,
@@ -62,6 +59,22 @@ const Index = () => {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBookmarkToggle = () => {
+    if (!article) return;
+
+    if (isBookmarked(article.url)) {
+      removeBookmark(article.url);
+    } else {
+      addBookmark({
+        url: article.url,
+        title: article.title,
+        author: article.author,
+        wordCount: article.wordCount,
+        readingTime: article.readingTime,
+      });
     }
   };
 
@@ -85,12 +98,6 @@ const Index = () => {
             <div className="text-center mb-10 relative">
               <div className="absolute top-0 right-0 flex items-center gap-2">
                 <ThemeToggle />
-                <Link to="/analytics">
-                  <Button variant="outline" size="sm">
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Analytics
-                  </Button>
-                </Link>
               </div>
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-6">
                 <BookOpen className="h-8 w-8 text-primary" />
@@ -132,13 +139,35 @@ const Index = () => {
               </div>
             )}
 
-            {/* History */}
-            <ArticleHistory
-              history={history}
-              onSelect={fetchArticle}
-              onRemove={removeFromHistory}
-              onClear={clearHistory}
-            />
+            {/* History and Bookmarks */}
+            <Tabs defaultValue="history" className="max-w-2xl mx-auto mt-12">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  Recent ({history.length})
+                </TabsTrigger>
+                <TabsTrigger value="bookmarks" className="flex items-center gap-2">
+                  <Bookmark className="h-4 w-4" />
+                  Bookmarks ({bookmarks.length})
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="history" className="mt-6">
+                <ArticleHistory
+                  history={history}
+                  onSelect={fetchArticle}
+                  onRemove={removeFromHistory}
+                  onClear={clearHistory}
+                />
+              </TabsContent>
+              <TabsContent value="bookmarks" className="mt-6">
+                <BookmarksList
+                  bookmarks={bookmarks}
+                  onSelect={fetchArticle}
+                  onRemove={removeBookmark}
+                  onClear={clearBookmarks}
+                />
+              </TabsContent>
+            </Tabs>
           </>
         )}
 
@@ -147,16 +176,32 @@ const Index = () => {
 
         {/* Article */}
         {article && !isLoading && (
-          <ArticleContent
-            title={article.title}
-            author={article.author}
-            content={article.content}
-            wordCount={article.wordCount}
-            readingTime={article.readingTime}
-            textSize={textSize}
-            onTextSizeChange={setTextSize}
-            onBack={handleBack}
-          />
+          <>
+            {/* Warning for partial content */}
+            {article.warning && (
+              <div className="max-w-3xl mx-auto mb-6">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{article.warning}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            <ArticleContent
+              ref={articleRef}
+              title={article.title}
+              author={article.author}
+              content={article.content}
+              wordCount={article.wordCount}
+              readingTime={article.readingTime}
+              textSize={textSize}
+              onTextSizeChange={setTextSize}
+              onBack={handleBack}
+              url={article.url}
+              isBookmarked={isBookmarked(article.url)}
+              onBookmarkToggle={handleBookmarkToggle}
+            />
+          </>
         )}
       </div>
     </div>
