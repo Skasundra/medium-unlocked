@@ -4,9 +4,10 @@ import { ArticleInput } from '@/components/ArticleInput';
 import { ArticleContent } from '@/components/ArticleContent';
 import { ArticleHistory } from '@/components/ArticleHistory';
 import { LoadingSkeleton } from '@/components/LoadingSkeleton';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useArticleHistory } from '@/hooks/useArticleHistory';
 import { supabase } from '@/lib/supabaseClient';
-import { BookOpen, AlertCircle, BarChart3 } from 'lucide-react';
+import { BookOpen, AlertCircle, BarChart3, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import type { TextSize } from '@/components/TextSizeControl';
@@ -69,6 +70,12 @@ const Index = () => {
     setError(null);
   };
 
+  const handleResumeLastArticle = () => {
+    if (history.length > 0) {
+      fetchArticle(history[0].url);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 sm:py-12">
@@ -76,12 +83,15 @@ const Index = () => {
           <>
             {/* Header */}
             <div className="text-center mb-10 relative">
-              <Link to="/analytics" className="absolute top-0 right-0">
-                <Button variant="outline" size="sm">
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Analytics
-                </Button>
-              </Link>
+              <div className="absolute top-0 right-0 flex items-center gap-2">
+                <ThemeToggle />
+                <Link to="/analytics">
+                  <Button variant="outline" size="sm">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Analytics
+                  </Button>
+                </Link>
+              </div>
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-6">
                 <BookOpen className="h-8 w-8 text-primary" />
               </div>
@@ -95,6 +105,22 @@ const Index = () => {
 
             {/* Input */}
             <ArticleInput onSubmit={fetchArticle} isLoading={isLoading} />
+
+            {/* Resume Last Article Button */}
+            {history.length > 0 && (
+              <div className="max-w-2xl mx-auto mt-4 flex justify-center">
+                <Button
+                  variant="ghost"
+                  onClick={handleResumeLastArticle}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Resume: {history[0].title.length > 40 
+                    ? history[0].title.substring(0, 40) + '...' 
+                    : history[0].title}
+                </Button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
