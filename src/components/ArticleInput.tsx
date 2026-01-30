@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Clipboard, ArrowRight, Loader2 } from 'lucide-react';
-import { useAdsterraPopunder } from '@/hooks/useAdsterraPopunder';
 
 interface ArticleInputProps {
   onSubmit: (url: string) => void;
@@ -11,7 +10,6 @@ interface ArticleInputProps {
 
 export function ArticleInput({ onSubmit, isLoading }: ArticleInputProps) {
   const [url, setUrl] = useState('');
-  const { triggerPopunder } = useAdsterraPopunder();
 
   const handlePaste = async () => {
     try {
@@ -26,7 +24,6 @@ export function ArticleInput({ onSubmit, isLoading }: ArticleInputProps) {
     e.preventDefault();
     if (url.trim()) {
       // Trigger popunder on form submission
-      triggerPopunder();
       onSubmit(url.trim());
     }
   };
